@@ -87,7 +87,8 @@ router.get('/metadata/bonus-types', authenticateAdmin, (req, res) => {
         'qi_per_second_multiplier', 'breakthrough_chance_add', 'hp_add', 'atk_add', 'def_add',
         'hp_mul', 'atk_mul', 'def_mul', 'qi_per_second_base_add', 'body_temper_eff_add', 
         'alchemy_success_base_add', 'speed_add', 'crit_rate_add', 'crit_damage_add', 
-        'dodge_rate_add', 'lifesteal_rate_add', 'counter_rate_add'
+        'dodge_rate_add', 'lifesteal_rate_add', 'counter_rate_add',
+        'hit_rate_add', 'crit_resist_add', 'lifesteal_resist_add', 'counter_resist_add' // Added resist types
     ];
     const equipmentSlots = ['weapon', 'armor', 'accessory'];
     res.json({ bonusTypes, equipmentSlots });
@@ -129,13 +130,8 @@ router.put('/players/:name', authenticateAdmin, async (req, res) => {
     try {
         conn = await pool.getConnection();
         
-        // FIX: Let the database handle the updated_at column automatically
+        // Let the database handle the updated_at column automatically
         delete updates.updated_at;
-
-        // Special handling for inventory: it's an array of objects like {itemId: '...'}
-        if (updates.inventory && Array.isArray(updates.inventory)) {
-             updates.inventory = JSON.stringify(updates.inventory.map(item => item.itemId).filter(Boolean));
-        }
 
         const columns = Object.keys(updates);
         const setClause = columns.map(col => `\`${col}\` = ?`).join(', ');
@@ -163,13 +159,13 @@ router.put('/players/:name', authenticateAdmin, async (req, res) => {
     }
 });
 
-// Helper function to format JS dates/ISO strings to MySQL DATETIME format
+// Helper function to format JS dates/ISO strings to SQLite DATETIME format
 const formatDateTimeForDB = (dateString) => {
     if (typeof dateString === 'string' && dateString.includes('T')) {
         try {
             const date = new Date(dateString);
             if (isNaN(date.getTime())) return dateString;
-            // Converts to 'YYYY-MM-DD HH:MM:SS' format
+            // Converts to 'YYYY-MM-DD HH:MM:SS' format for SQLite
             return date.toISOString().slice(0, 19).replace('T', ' ');
         } catch (e) {
             return dateString;
@@ -210,19 +206,11 @@ const createCrudEndpoints = (tableName, primaryKey = 'id') => {
         try {
             conn = await pool.getConnection();
             const itemData = { ...req.body };
-
-            // If the primary key is sent for an auto-increment column but is empty, remove it
-            // so the database can generate the ID. For non-auto-increment keys, the frontend
-            // should enforce that a value is provided.
+            
+            // For SQLite, if the primary key is an integer and is sent as empty/null,
+            // we should remove it to allow auto-increment to work.
             if (primaryKey in itemData && (itemData[primaryKey] === '' || itemData[primaryKey] === null)) {
-                const [pkColumnInfo] = await conn.query(
-                    `SELECT EXTRA FROM INFORMATION_SCHEMA.COLUMNS 
-                     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
-                    [tableName, primaryKey]
-                );
-                if (pkColumnInfo && pkColumnInfo.EXTRA.includes('auto_increment')) {
-                     delete itemData[primaryKey];
-                }
+                 delete itemData[primaryKey];
             }
             
             const columns = Object.keys(itemData);
@@ -236,6 +224,10 @@ const createCrudEndpoints = (tableName, primaryKey = 'id') => {
                 let value = itemData[col];
                 if (typeof value === 'object' && value !== null) {
                      return JSON.stringify(value);
+                }
+                // Handle booleans for SQLite
+                if (typeof value === 'boolean') {
+                    return value ? 1 : 0;
                 }
                 return formatDateTimeForDB(value);
             });
@@ -264,6 +256,10 @@ const createCrudEndpoints = (tableName, primaryKey = 'id') => {
                 let value = updates[col];
                 if (typeof value === 'object' && value !== null) {
                      return JSON.stringify(value);
+                }
+                 // Handle booleans for SQLite
+                if (typeof value === 'boolean') {
+                    return value ? 1 : 0;
                 }
                 return formatDateTimeForDB(value);
             });

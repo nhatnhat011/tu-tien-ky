@@ -10,11 +10,17 @@
 -   **Luyện Thể & Thám Hiểm:** Sử dụng linh khí để tôi luyện thân thể, tăng cường các chỉ số chiến đấu. Gửi nhân vật đi thám hiểm các khu vực để tìm kiếm nguyên liệu (linh thảo).
 -   **Công Pháp & Trang Bị:** Học và trang bị các loại công pháp và trang bị (vũ khí, giáp, phụ kiện) khác nhau để nhận được các hiệu ứng có lợi như tăng tốc độ tu luyện, tăng tỷ lệ đột phá, tăng chỉ số chiến đấu.
 -   **Luyện Đan (Alchemy):** Sử dụng linh thảo thu thập được từ Thám Hiểm để luyện chế ra các loại đan dược, cung cấp các hiệu ứng tức thời như hồi phục linh khí hoặc tăng cường sức mạnh trong PvP.
--   **Thí Luyện Chi Địa (PvE):** Tham gia chiến đấu với các quái vật tại các khu vực thí luyện để nhận phần thưởng là linh khí và vật phẩm.
--   **Đấu Pháp (PvP) & Ác Nghiệp:**
-    *   **PvP Khác Cảnh Giới:** Người chơi có thể thách đấu với những người chơi khác chênh lệch cảnh giới.
-    *   **Ác Nghiệp:** Tấn công và chiến thắng người chơi có cảnh giới thấp hơn sẽ tích lũy điểm Ác Nghiệp. Điểm Ác Nghiệp càng cao, rủi ro bị **Thiên Phạt** (rớt 1 cảnh giới) khi đột phá càng lớn.
-    *   **Chọc Tức Đại Năng:** Tấn công người chơi có cảnh giới cao hơn có một tỷ lệ rất nhỏ bị đại năng đó phát hiện và đánh chết ngay lập tức (rớt 1 cảnh giới).
+-   **Thí Luyện Chi Địa (PvE):** Tham gia chiến đấu theo lượt với các quái vật tại các khu vực thí luyện để nhận phần thưởng. Các trận chiến sử dụng **Hệ Thống Chiến Đấu** cốt lõi của game.
+-   **Hệ Thống Chiến Đấu (Combat System):**
+    *   **Chiến đấu theo lượt:** Các trận đấu PvE và PvP đều diễn ra theo lượt. Tốc độ (Speed) của nhân vật quyết định thứ tự ra đòn.
+    *   **Chỉ số toàn diện:** Sức mạnh của người chơi được thể hiện qua một hệ thống chỉ số chi tiết, bao gồm các chỉ số cơ bản (Sinh Lực, Công Kích, Phòng Ngự) và các chỉ số nâng cao (Tốc Độ, Bạo Kích, Sát Thương Bạo Kích, Né Tránh, Chính Xác, Hút Máu, Phản Đòn) cùng các chỉ số kháng tương ứng.
+    *   **Tính toán sát thương:** Sát thương được tính toán dựa trên Công Kích của người tấn công và Phòng Ngự của người phòng thủ, có xét đến các yếu tố như Bạo Kích và Né Tránh.
+    *   **Sát Khí & Tuyệt Kỹ (PvP):** Trong các trận Đấu Pháp, người chơi sẽ tích lũy Sát Khí (Energy) qua mỗi lượt. Sát Khí được dùng để thi triển các Tuyệt Kỹ PvP đặc biệt với hiệu ứng đa dạng như gây sát thương lớn, tạo khiên chắn, hoặc gây hiệu ứng bất lợi cho đối thủ.
+-   **Đấu Pháp (PvP) & Vinh Dự:**
+    *   **Luận Bàn Đạo Pháp:** Người chơi có thể thách đấu với những người chơi khác để kiểm chứng thực lực và tranh đoạt **Điểm Vinh Dự**. Các trận đấu sử dụng **Hệ Thống Chiến Đấu** theo lượt, nơi chiến thuật sử dụng **Tuyệt Kỹ PvP** và quản lý **Sát Khí** là chìa khóa để chiến thắng.
+    *   **Cửa Hàng Vinh Dự:** Dùng Điểm Vinh Dự kiếm được để mua các trang bị, đan dược đặc biệt hoặc lĩnh ngộ các **Tuyệt Kỹ PvP** mới.
+    *   **Ác Nghiệp & Thiên Phạt:** Tấn công và chiến thắng người chơi có cảnh giới thấp hơn sẽ tích lũy điểm Ác Nghiệp. Điểm Ác Nghiệp càng cao, rủi ro bị **Thiên Phạt** (rớt 1 cảnh giới) khi đột phá càng lớn.
+    *   **Xem Lại Chiến Báo:** Tất cả các trận đấu PvP đều được ghi lại. Người chơi có thể xem lại chi tiết diễn biến trận đấu để phân tích và rút kinh nghiệm.
 -   **Tông Môn (Guilds):** Tạo hoặc gia nhập Tông Môn. Cống hiến cho Tông Môn để tăng cấp và nhận các phúc lợi chung cho tất cả thành viên, đồng thời chuẩn bị lực lượng cho Tông Môn Chiến.
 -   **Tông Môn Chiến (Guild Wars):**
     *   **Sự kiện định kỳ:** Một sự kiện tự động diễn ra theo lịch trình, nơi các tông môn đối đầu để tranh đoạt vinh quang và phần thưởng.
@@ -57,23 +63,25 @@ Dự án được chia thành ba phần chính: client game (thư mục gốc), 
 │   ├── Auth.tsx                # Component đăng nhập/đăng ký
 │   ├── BodyTemperingPanel.tsx  # Panel Luyện Thể & Thám Hiểm
 │   ├── ChatPanel.tsx           # Panel chat thế giới
+│   ├── CombatReplayModal.tsx   # (MỚI) Modal xem lại chi tiết trận đấu PvP
 │   ├── ConfirmationModal.tsx   # Modal xác nhận hành động (VD: rời tông môn)
 │   ├── EnlightenmentPanel.tsx  # Panel Lĩnh Ngộ (cây thiên phú)
 │   ├── EquipmentPanel.tsx      # Panel quản lý Trang Bị
 │   ├── EventsPanel.tsx         # Panel hiển thị sự kiện (dùng trong SystemPanel)
 │   ├── GameLog.tsx             # Component hiển thị nhật ký tu luyện
 │   ├── GuildPanel.tsx          # Component quản lý Tông Môn
-│   ├── GuildWarPanel.tsx       # (MỚI) Panel Tông Môn Chiến
+│   ├── GuildWarPanel.tsx       # Panel Tông Môn Chiến
 │   ├── Header.tsx              # Component tiêu đề game
 │   ├── HonorShopPanel.tsx      # Panel cửa hàng vinh dự (dùng trong PvpPanel)
 │   ├── Icons.tsx               # Các icon SVG
 │   ├── LeaderboardPanel.tsx    # Panel Bảng Xếp Hạng
 │   ├── MarketPanel.tsx         # Panel Chợ Giao Dịch
-│   ├── MatchDetailsModal.tsx   # Modal chi tiết trận đấu PvP
+│   ├── MatchDetailsModal.tsx   # Modal chi tiết trận đấu PvP (dùng cho Tông Môn Chiến)
 │   ├── MatchHistoryPanel.tsx   # Panel lịch sử đấu PvP, tích hợp trong PvpPanel
 │   ├── Modal.tsx               # Component modal chung, làm nền cho các cửa sổ pop-up
 │   ├── PlayerInspectModal.tsx  # Modal xem thông tin người chơi khác (Quan Sát)
 │   ├── PvpPanel.tsx            # Component chính cho Đấu Pháp (gồm tìm đối thủ, shop, lịch sử)
+│   ├── PvpSkillsPanel.tsx      # (MỚI) Panel lĩnh ngộ Tuyệt Kỹ PvP
 │   ├── RedeemCodePanel.tsx     # Panel nhập giftcode (dùng trong SystemPanel)
 │   ├── SystemPanel.tsx         # Panel Hệ thống (gộp EventsPanel và RedeemCodePanel)
 │   ├── TechniquesPanel.tsx     # Panel Công Pháp

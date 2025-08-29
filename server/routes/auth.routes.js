@@ -29,11 +29,14 @@ router.post('/register', async (req, res) => {
 
         const hashedPassword = await bcrypt.hash(password, 10);
         
+        const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
         await conn.query(
-            "INSERT INTO players (name, password, karma, learnedTechniques, activeTechniqueId, lastChallengeTime, pills, herbs, spiritualRoot, honorPoints, enlightenmentPoints, unlockedInsights, purchasedHonorItems, explorationStatus, linh_thach, pvpBuff, learned_pvp_skills) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO players (name, password, updated_at, karma, learnedTechniques, activeTechniqueId, lastChallengeTime, pills, herbs, spiritualRoot, honorPoints, enlightenmentPoints, unlockedInsights, purchasedHonorItems, explorationStatus, linh_thach, pvpBuff, learned_pvp_skills) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 name,
                 hashedPassword,
+                now, // updated_at
                 0, // karma
                 JSON.stringify([]), // learnedTechniques
                 null, // activeTechniqueId

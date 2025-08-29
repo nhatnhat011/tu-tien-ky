@@ -164,7 +164,7 @@ CREATE TABLE IF NOT EXISTS `players` (
   `qi` REAL NOT NULL DEFAULT 0,
   `realmIndex` INTEGER NOT NULL DEFAULT 0,
   `bodyStrength` REAL NOT NULL DEFAULT 0,
-  `updated_at` TEXT NOT NULL DEFAULT (datetime('now')),
+  `updated_at` TEXT NOT NULL,
   `guildId` INTEGER NULL,
   `karma` INTEGER NOT NULL DEFAULT 0,
   `lastChallengeTime` TEXT NULL DEFAULT '{}',
@@ -185,13 +185,7 @@ CREATE TABLE IF NOT EXISTS `players` (
   `learned_pvp_skills` TEXT NULL DEFAULT '[]',
   FOREIGN KEY (`guildId`) REFERENCES `guilds`(`id`) ON DELETE SET NULL
 );
--- Trigger to auto-update updated_at timestamp
-CREATE TRIGGER IF NOT EXISTS [UpdatePlayerTimestamp]
-AFTER UPDATE ON players
-FOR EACH ROW
-BEGIN
-    UPDATE players SET updated_at = datetime('now') WHERE name = OLD.name;
-END;
+-- Trigger to auto-update updated_at timestamp REMOVED. Logic is now handled by the application server.
 
 
 -- Player Equipment Table (Instance-based items)

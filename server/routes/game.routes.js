@@ -3,6 +3,8 @@ const { authenticateToken } = require('../middleware/auth');
 const pool = require('../config/database');
 const { performAction, updatePlayerState, calculateCombatStats } = require('../services/player.service');
 const { getGameData } = require('../services/gameData.service');
+const { ATTACKER_MESSAGES } = require('../utils/combatMessages');
+
 
 const router = express.Router();
 
@@ -127,37 +129,87 @@ router.post('/challenge', authenticateToken, async (req, res) => {
         
         const bonuses = await require('../services/player.service').calculateTotalBonuses(conn, p);
         const playerStats = calculateCombatStats(p, bonuses);
+        const monsterStats = {
+            name: zone.monster.name,
+            hp: zone.monster.health,
+            maxHp: zone.monster.health,
+            atk: zone.monster.attack,
+            def: 0, // Monsters have simple stats for now
+            critRate: 0.05,
+            critDamage: 1.5,
+            dodgeRate: 0.01,
+            hitRate: 0
+        };
 
-        let playerHealth = playerStats.hp;
-        let playerAttack = playerStats.atk;
+        let combatants = {
+            [p.name]: { hp: playerStats.hp, maxHp: playerStats.hp, energy: 0, maxEnergy: 100 },
+            [monsterStats.name]: { hp: monsterStats.hp, maxHp: monsterStats.maxHp, energy: 0, maxEnergy: 100 }
+        };
 
-        let monsterHealth = zone.monster.health;
-        let monsterAttack = zone.monster.attack;
-        const combatLog = [];
-        let playerTurn = true;
+        const structuredCombatLog = [];
+        let turn = 0;
 
-        while (playerHealth > 0 && monsterHealth > 0) {
-            if (playerTurn) {
-                const damage = playerAttack + Math.floor(Math.random() * playerAttack * 0.2);
-                monsterHealth -= damage;
-                combatLog.push({ message: `Bạn tấn công ${zone.monster.name}, gây ${damage.toFixed(0)} sát thương.`, type: 'info' });
-            } else {
-                const damage = monsterAttack + Math.floor(Math.random() * monsterAttack * 0.2);
-                const damageReduction = playerStats.def / (playerStats.def + 500); // K=500 for PvE
-                const actualDamage = Math.max(1, Math.floor(damage * (1 - damageReduction)));
-                playerHealth -= actualDamage;
-                combatLog.push({ message: `${zone.monster.name} tấn công, bạn nhận ${actualDamage.toFixed(0)} sát thương.`, type: 'warning' });
-            }
-            playerTurn = !playerTurn;
-        }
+        const addLog = (text, type = 'action', damage = 0) => {
+            structuredCombatLog.push({
+                turn, text, type, damage,
+                state: {
+                    [p.name]: { ...combatants[p.name] },
+                    [monsterStats.name]: { ...combatants[monsterStats.name] }
+                }
+            });
+        };
 
-        const updates = {};
-        let rewardLogs = [];
-        if (playerHealth > 0) { // WIN
-            combatLog.push({ message: `Bạn đã đánh bại ${zone.monster.name}!`, type: 'success' });
+        addLog(`Bạn đối mặt với ${monsterStats.name} tại ${zone.name}!`, 'info');
+
+        while (combatants[p.name].hp > 0 && combatants[monsterStats.name].hp > 0 && turn < 50) {
+            turn++;
             
+            // Player's turn
+            if (Math.random() < monsterStats.dodgeRate - playerStats.hitRate) {
+                addLog(`${monsterStats.name} đã né được đòn tấn công của bạn!`, 'info');
+            } else {
+                let damage = playerStats.atk;
+                let isCrit = Math.random() < playerStats.critRate;
+                if (isCrit) damage *= playerStats.critDamage;
+                const damageReduction = monsterStats.def / (monsterStats.def + 500);
+                const actualDamage = Math.max(1, Math.floor(damage * (1 - damageReduction)));
+                combatants[monsterStats.name].hp -= actualDamage;
+
+                let logMessage = isCrit 
+                    ? `Bạn tung đòn CHÍ MẠNG, gây ${actualDamage} sát thương lên ${monsterStats.name}!`
+                    : `Bạn tấn công, gây ${actualDamage} sát thương cho ${monsterStats.name}.`;
+                addLog(logMessage, 'action', actualDamage);
+            }
+            if (combatants[monsterStats.name].hp <= 0) break;
+
+            // Monster's turn
+            if (Math.random() < playerStats.dodgeRate - monsterStats.hitRate) {
+                addLog(`Bạn né thành công đòn tấn công của ${monsterStats.name}!`, 'info');
+            } else {
+                let damage = monsterStats.atk;
+                let isCrit = Math.random() < monsterStats.critRate;
+                if (isCrit) damage *= monsterStats.critDamage;
+                const damageReduction = playerStats.def / (playerStats.def + 500);
+                const actualDamage = Math.max(1, Math.floor(damage * (1 - damageReduction)));
+                combatants[p.name].hp -= actualDamage;
+                
+                let logMessage = isCrit
+                    ? `${monsterStats.name} tấn công CHÍ MẠNG, bạn nhận ${actualDamage} sát thương!`
+                    : `${monsterStats.name} tấn công, bạn nhận ${actualDamage} sát thương.`;
+                addLog(logMessage, 'action', actualDamage);
+            }
+            if (combatants[p.name].hp <= 0) break;
+        }
+        
+        const playerWon = combatants[p.name].hp > 0;
+        const updates = {};
+        let logMessage, logType;
+
+        if (playerWon) {
+            addLog(`Bạn đã đánh bại ${monsterStats.name}!`, 'info');
+            let rewardLogs = [];
             for (const reward of zone.rewards) {
-                if (reward.type === 'qi') {
+                 if (reward.type === 'qi') {
                     p.qi = Number(p.qi) + reward.amount;
                     rewardLogs.push(`${reward.amount} Linh Khí`);
                 }
@@ -167,32 +219,29 @@ router.post('/challenge', authenticateToken, async (req, res) => {
                     rewardLogs.push(`${herb?.name} x${reward.amount}`);
                 }
                 if (reward.type === 'equipment') {
-                    await conn.query(
-                        "INSERT INTO player_equipment (player_name, equipment_id) VALUES (?, ?)",
-                        [p.name, reward.equipmentId]
-                    );
+                    await conn.query("INSERT INTO player_equipment (player_name, equipment_id) VALUES (?, ?)", [p.name, reward.equipmentId]);
                     const equipment = gameData.EQUIPMENT.find(t => t.id === reward.equipmentId);
                     rewardLogs.push(`[${equipment.name}]`);
                 }
             }
             updates.qi = p.qi;
             updates.herbs = JSON.stringify(p.herbs);
-
-            if(rewardLogs.length > 0) {
-                 combatLog.push({ message: `Phần thưởng: ${rewardLogs.join(', ')}.`, type: 'success' });
-            }
-        } else { // LOSE
+            logMessage = `Khiêu chiến thành công! Phần thưởng: ${rewardLogs.join(', ')}.`;
+            logType = 'success';
+        } else {
+            addLog(`Bạn đã bị ${monsterStats.name} đánh bại!`, 'info');
             const qiPenalty = Math.floor(p.qi * 0.05);
-            p.qi -= qiPenalty;
-            updates.qi = p.qi;
-            combatLog.push({ message: `Bạn đã bị ${zone.monster.name} đánh bại! Bị thương nhẹ và mất ${qiPenalty} linh khí.`, type: 'danger' });
+            updates.qi = p.qi - qiPenalty;
+            logMessage = `Thất bại, bạn bị thương nhẹ và mất ${qiPenalty} linh khí.`;
+            logType = 'danger';
         }
 
         const newCooldowns = { ...lastChallengeTime, [zoneId]: Date.now() };
         updates.lastChallengeTime = JSON.stringify(newCooldowns);
 
         await updatePlayerState(conn, p.name, updates);
-        resRef.combatLog = combatLog;
+        resRef.log = { message: logMessage, type: logType };
+        resRef.structuredCombatLog = structuredCombatLog;
     });
 });
 
@@ -225,7 +274,7 @@ router.post('/equip-item', authenticateToken, async (req, res) => {
         }
 
         const [itemCurrentlyEquipped] = await conn.query(
-            "SELECT instance_id FROM player_equipment WHERE player_name = ? AND slot = ? AND is_equipped = TRUE",
+            "SELECT instance_id FROM player_equipment WHERE player_name = ? AND slot = ? AND is_equipped = 1",
             [p.name, itemToEquip.slot]
         );
         
@@ -233,17 +282,17 @@ router.post('/equip-item', authenticateToken, async (req, res) => {
         if (itemCurrentlyEquipped) {
             if (itemCurrentlyEquipped.instance_id === itemToEquip.instance_id) {
                 // The clicked item is the one equipped, so unequip it
-                await conn.query("UPDATE player_equipment SET is_equipped = FALSE, slot = NULL WHERE instance_id = ?", [itemToEquip.instance_id]);
+                await conn.query("UPDATE player_equipment SET is_equipped = 0, slot = NULL WHERE instance_id = ?", [itemToEquip.instance_id]);
                 resRef.log = { message: `Bạn đã tháo [${itemToEquip.name}].`, type: 'info' };
                 return; // Action finished
             } else {
                 // Unequip the other item
-                await conn.query("UPDATE player_equipment SET is_equipped = FALSE, slot = NULL WHERE instance_id = ?", [itemCurrentlyEquipped.instance_id]);
+                await conn.query("UPDATE player_equipment SET is_equipped = 0, slot = NULL WHERE instance_id = ?", [itemCurrentlyEquipped.instance_id]);
             }
         }
         
         // Equip the new item
-        await conn.query("UPDATE player_equipment SET is_equipped = TRUE, slot = ? WHERE instance_id = ?", [itemToEquip.slot, itemToEquip.instance_id]);
+        await conn.query("UPDATE player_equipment SET is_equipped = 1, slot = ? WHERE instance_id = ?", [itemToEquip.slot, itemToEquip.instance_id]);
         resRef.log = { message: `Bạn đã trang bị [${itemToEquip.name}].`, type: 'success' };
     });
 });
@@ -387,7 +436,7 @@ router.get('/events/active', authenticateToken, async (req, res) => {
     try {
         conn = await pool.getConnection();
         const events = await conn.query(
-            "SELECT id, title, description, bonus_type, bonus_value, expires_at FROM events WHERE is_active = TRUE AND starts_at <= NOW() AND expires_at >= NOW() ORDER BY expires_at ASC"
+            "SELECT id, title, description, bonus_type, bonus_value, expires_at FROM events WHERE is_active = 1 AND starts_at <= datetime('now') AND expires_at >= datetime('now') ORDER BY expires_at ASC"
         );
         res.status(200).json(events);
     } catch (err) {
@@ -408,7 +457,7 @@ router.post('/redeem-code', authenticateToken, async (req, res) => {
         }
         const upperCaseCode = code.trim().toUpperCase();
 
-        const [giftCode] = await conn.query("SELECT * FROM gift_codes WHERE code = ? FOR UPDATE", [upperCaseCode]);
+        const [giftCode] = await conn.query("SELECT * FROM gift_codes WHERE code = ?", [upperCaseCode]);
         if (!giftCode) throw new Error("Mã không tồn tại.");
         if (giftCode.expires_at && new Date(giftCode.expires_at) < new Date()) throw new Error("Mã đã hết hạn.");
         if (giftCode.max_uses !== null && giftCode.uses >= giftCode.max_uses) throw new Error("Mã đã hết lượt sử dụng.");

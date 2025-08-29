@@ -1,4 +1,4 @@
-import React, { FC, useState, useEffect, useCallback } from 'react';
+import { FC, useState, useEffect, useCallback } from 'react';
 import type { GenericData, FormField, AdminMetadata } from '../../types';
 import Input from '../ui/Input';
 import Modal from '../ui/Modal';

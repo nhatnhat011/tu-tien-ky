@@ -180,8 +180,14 @@ const calculateCombatStats = (player, bonuses) => {
 };
 
 const updatePlayerState = async (conn, name, updates) => {
-    const fields = Object.keys(updates);
-    const values = Object.values(updates);
+    // Automatically add the updated_at timestamp to every update
+    const updatesWithTimestamp = {
+        ...updates,
+        updated_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    };
+
+    const fields = Object.keys(updatesWithTimestamp);
+    const values = Object.values(updatesWithTimestamp);
     if (fields.length === 0) return;
 
     // Stringify any object/array values before updating
@@ -256,7 +262,7 @@ const processOfflineGains = async (conn, name) => {
 
     const p = parsePlayerFromDBRow(p_raw);
     const now = Date.now();
-    const lastUpdate = p.last_update * 1000; // Convert seconds to milliseconds
+    const lastUpdate = new Date(p.updated_at.replace(' ', 'T') + 'Z').getTime(); // Parse as UTC
     const deltaTime = Math.max(0, (now - lastUpdate) / 1000);
     const offlineGains = { qi: 0 };
     let explorationLog;
@@ -315,7 +321,6 @@ const processOfflineGains = async (conn, name) => {
         qi: p.qi,
         explorationStatus: p.explorationStatus, // Already parsed/nulled
         herbs: p.herbs, // Already an object
-        updated_at: new Date(now).toISOString().slice(0, 19).replace('T', ' '), // Explicitly set update time for SQLite
     });
 
     const finalPlayerData = await getFullPlayerQuery(conn, name);

@@ -1,4 +1,5 @@
 
+
 const express = require('express');
 const pool = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
@@ -13,12 +14,13 @@ router.get('/listings', authenticateToken, async (req, res) => {
     try {
         conn = await pool.getConnection();
         // JOIN to get all item details in one query
+        // FIX: Replaced MySQL's NOW() with SQLite's datetime('now').
         const listings = await conn.query(`
             SELECT ml.*, pe.equipment_id, e.name, e.description, e.slot, e.bonuses
             FROM market_listings ml
             JOIN player_equipment pe ON ml.item_id = pe.instance_id
             JOIN equipment e ON pe.equipment_id = e.id
-            WHERE ml.expires_at > NOW() 
+            WHERE ml.expires_at > datetime('now') 
             ORDER BY ml.created_at DESC
         `);
         
@@ -35,7 +37,7 @@ router.get('/listings', authenticateToken, async (req, res) => {
                 name: listing.name,
                 description: listing.description,
                 slot: listing.slot,
-                bonuses: listing.bonuses || [],
+                bonuses: typeof listing.bonuses === 'string' ? JSON.parse(listing.bonuses) : (listing.bonuses || []),
             }
         }));
 
@@ -55,7 +57,7 @@ router.post('/list', authenticateToken, async (req, res) => {
         const gameData = getGameData();
         
         const [item] = await conn.query(
-            "SELECT * FROM player_equipment WHERE instance_id = ? AND player_name = ? AND is_equipped = FALSE",
+            "SELECT * FROM player_equipment WHERE instance_id = ? AND player_name = ? AND is_equipped = 0", // is_equipped is boolean (0/1)
             [itemInstanceId, p.name]
         );
         
@@ -69,10 +71,12 @@ router.post('/list', authenticateToken, async (req, res) => {
         // Tạo listing mới
         const expiresAt = new Date();
         expiresAt.setHours(expiresAt.getHours() + gameData.MARKET_LISTING_DURATION_HOURS);
+        // FIX: Format date for SQLite compatibility
+        const expiresAtString = expiresAt.toISOString().slice(0, 19).replace('T', ' ');
 
         await conn.query(
             "INSERT INTO market_listings (seller_name, item_id, price, expires_at) VALUES (?, ?, ?, ?)",
-            [p.name, itemInstanceId, price, expiresAt]
+            [p.name, itemInstanceId, price, expiresAtString]
         );
         
         // Note: The item remains owned by the player but is now "locked" by the listing.
@@ -88,7 +92,8 @@ router.post('/buy/:id', authenticateToken, async (req, res) => {
     const listingId = req.params.id;
     await performAction(req, res, async (conn, p, body, resRef) => {
         const gameData = getGameData();
-        const [listing] = await conn.query("SELECT * FROM market_listings WHERE id = ? AND expires_at > NOW() FOR UPDATE", [listingId]);
+        // FIX: Replaced NOW() with datetime('now') and removed unsupported FOR UPDATE clause for SQLite.
+        const [listing] = await conn.query("SELECT * FROM market_listings WHERE id = ? AND expires_at > datetime('now')", [listingId]);
         
         if (!listing) {
             throw new Error("Vật phẩm không còn tồn tại hoặc đã hết hạn.");
@@ -119,9 +124,10 @@ router.post('/buy/:id', authenticateToken, async (req, res) => {
 
         // 4. Xóa listing
         await conn.query("DELETE FROM market_listings WHERE id = ?", [listingId]);
+        
+        const [equipment] = await conn.query("SELECT e.name FROM player_equipment pe JOIN equipment e ON pe.equipment_id = e.id WHERE pe.instance_id = ?", [listing.item_id]);
 
-        const [itemInfo] = await conn.query("SELECT * from equipment where id = (SELECT equipment_id from player_equipment where instance_id = ?)", [listing.item_id]);
-        resRef.log = { message: `Mua thành công [${itemInfo?.name}]!`, type: 'success' };
+        resRef.log = { message: `Mua thành công [${equipment?.name}]!`, type: 'success' };
     });
 });
 
@@ -129,17 +135,17 @@ router.post('/buy/:id', authenticateToken, async (req, res) => {
 router.post('/cancel/:id', authenticateToken, async (req, res) => {
     const listingId = req.params.id;
     await performAction(req, res, async (conn, p, body, resRef) => {
-        const gameData = getGameData();
-        const [listing] = await conn.query("SELECT * FROM market_listings WHERE id = ? FOR UPDATE", [listingId]);
-        if (!listing || listing.seller_name !== p.name) {
-            throw new Error("Đây không phải vật phẩm của bạn.");
+        // FIX: Removed unsupported FOR UPDATE clause for SQLite.
+        const [listing] = await conn.query("SELECT * FROM market_listings WHERE id = ? AND seller_name = ?", [listingId, p.name]);
+        if (!listing) {
+            throw new Error("Vật phẩm này không phải của bạn hoặc không tồn tại.");
         }
         
         // Chỉ cần xóa listing, vật phẩm vẫn thuộc sở hữu của người chơi.
         await conn.query("DELETE FROM market_listings WHERE id = ?", [listingId]);
         
-        const [itemInfo] = await conn.query("SELECT * from equipment where id = (SELECT equipment_id from player_equipment where instance_id = ?)", [listing.item_id]);
-        resRef.log = { message: `Bạn đã hủy bán [${itemInfo?.name}].`, type: 'info' };
+        const [equipment] = await conn.query("SELECT e.name FROM player_equipment pe JOIN equipment e ON pe.equipment_id = e.id WHERE pe.instance_id = ?", [listing.item_id]);
+        resRef.log = { message: `Bạn đã hủy bán [${equipment?.name}].`, type: 'info' };
     });
 });
 
@@ -170,7 +176,7 @@ router.get('/my-listings', authenticateToken, async (req, res) => {
                 name: listing.name,
                 description: listing.description,
                 slot: listing.slot,
-                bonuses: listing.bonuses || [],
+                bonuses: typeof listing.bonuses === 'string' ? JSON.parse(listing.bonuses) : (listing.bonuses || []),
             }
         }));
 

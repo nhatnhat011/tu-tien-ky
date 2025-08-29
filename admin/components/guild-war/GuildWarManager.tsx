@@ -1,4 +1,4 @@
-import React, { FC, useState, useEffect, useCallback } from 'react';
+import { FC, useState, useEffect, useCallback } from 'react';
 import Modal from '../ui/Modal';
 
 const API_BASE_URL = '/api';

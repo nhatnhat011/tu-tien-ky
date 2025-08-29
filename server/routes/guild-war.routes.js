@@ -73,7 +73,7 @@ router.get('/state', authenticateToken, async (req, res) => {
 
         const fight_results = fight_results_raw.map(fight => ({
             ...fight,
-            combat_log: fight.combat_log || [] // Ensure combat_log is an array
+            combat_log: typeof fight.combat_log === 'string' ? JSON.parse(fight.combat_log) : (fight.combat_log || []) // Ensure combat_log is an array
         }));
 
         res.status(200).json({
@@ -101,7 +101,7 @@ router.post('/register', authenticateToken, async (req, res) => {
         await conn.beginTransaction();
 
         const [player] = await conn.query("SELECT p.guildId, g.leaderName FROM players p JOIN guilds g ON p.guildId = g.id WHERE p.name = ?", [name]);
-        if (!player) {
+        if (!player || !player.guildId) {
             return res.status(403).json({ message: "Bạn không ở trong Tông Môn nào." });
         }
         if (player.leaderName !== name) {
@@ -112,9 +112,10 @@ router.post('/register', authenticateToken, async (req, res) => {
         if (!war) {
             return res.status(400).json({ message: "Hiện không trong thời gian đăng ký." });
         }
-
+        
+        // FIX: Replaced MySQL's `ON DUPLICATE KEY UPDATE` with SQLite's `INSERT OR IGNORE`.
         await conn.query(
-            "INSERT INTO guild_war_registrations (war_id, guild_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE war_id=war_id",
+            "INSERT OR IGNORE INTO guild_war_registrations (war_id, guild_id) VALUES (?, ?)",
             [war.id, player.guildId]
         );
 
@@ -176,7 +177,7 @@ router.post('/match/:matchId/lineup', authenticateToken, async (req, res) => {
         }
 
         const [player] = await conn.query("SELECT p.guildId, g.leaderName FROM players p JOIN guilds g ON p.guildId = g.id WHERE p.name = ?", [name]);
-        if (!player || player.leaderName !== name) {
+        if (!player || !player.guildId || player.leaderName !== name) {
             return res.status(403).json({ message: "Chỉ Tông Chủ mới có thể chọn đội hình." });
         }
 
@@ -207,8 +208,8 @@ router.post('/match/:matchId/lineup', authenticateToken, async (req, res) => {
 
     } catch (err) {
         if (conn) await conn.rollback();
-        // Handle unique constraint violation gracefully
-        if (err.code === 'ER_DUP_ENTRY') {
+        // FIX: Replaced MySQL-specific error code check with a generic check for SQLite's UNIQUE constraint violation message.
+        if (err.message && err.message.toUpperCase().includes('UNIQUE CONSTRAINT FAILED')) {
             return res.status(409).json({ message: "Bạn đã thiết lập đội hình cho vòng này rồi." });
         }
         console.error("Submit Lineup Error:", err);

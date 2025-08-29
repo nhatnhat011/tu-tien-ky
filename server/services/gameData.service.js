@@ -37,7 +37,7 @@ const parseJsonFields = (items) => {
 };
 
 
-const loadAllGameData = async () => {
+const reloadGameData = async () => {
     let conn;
     try {
         conn = await pool.getConnection();
@@ -67,10 +67,7 @@ const loadAllGameData = async () => {
         configRows.forEach(row => {
             let value = row.config_value;
             try {
-                // MariaDB driver might return JSON as string.
-                if (typeof value === 'string') {
-                     value = JSON.parse(value);
-                }
+                 value = JSON.parse(value);
             } catch (e) {
                 // Not a JSON string, use as is (for simple numbers).
             }
@@ -90,12 +87,7 @@ const loadAllGameData = async () => {
 };
 
 const initializeGameData = async () => {
-    await loadAllGameData();
-};
-
-const reloadGameData = async () => {
-    // This function can be called by an admin endpoint to refresh the cache without restarting the server.
-    await loadAllGameData();
+    await reloadGameData();
 };
 
 const getGameData = () => {

@@ -90,8 +90,9 @@ router.post('/contribute', authenticateToken, async (req, res) => {
         if (!p.guildId) throw new Error('Bạn không ở trong Tông Môn nào.');
         if (!amount || amount <= 0) throw new Error('Lượng cống hiến không hợp lệ.');
         if (p.qi < amount) throw new Error('Linh khí không đủ để cống hiến.');
-
-        const guilds = await conn.query("SELECT * FROM guilds WHERE id = ? FOR UPDATE", [p.guildId]);
+        
+        // FIX: Removed `FOR UPDATE` as it's not supported/needed in SQLite.
+        const guilds = await conn.query("SELECT * FROM guilds WHERE id = ?", [p.guildId]);
         if (guilds.length === 0) throw new Error('Tông Môn không tồn tại.');
         const guild = guilds[0];
 

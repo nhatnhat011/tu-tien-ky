@@ -1,5 +1,5 @@
-import React, { FC, useState, useEffect } from 'react';
-import type { AdminStats, AdminMetadata, FormField, ColumnDefinition } from '../../types';
+import { FC, useState, useEffect } from 'react';
+import type { AdminStats, AdminMetadata, ColumnDefinition } from '../../types';
 import Button from '../ui/Button';
 import DataManager from '../data/DataManager';
 import PlayerManager from '../players/PlayerManager';
@@ -24,41 +24,33 @@ const AdminDashboard: FC<AdminDashboardProps> = ({ token, onLogout }) => {
     useEffect(() => {
         const fetchAllMetadata = async () => {
             setIsMetadataLoading(true);
+            const fetchWithAuth = (url: string) => fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+            
+            // Fetch stats resiliently
             try {
-                const fetchWithAuth = (url: string) => fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+                const statsRes = await fetchWithAuth(`${API_BASE_URL}/admin/stats`);
+                if (!statsRes.ok) throw new Error('Failed to fetch stats');
+                setStats(await statsRes.json());
+            } catch (err) {
+                console.error("Could not fetch dashboard stats:", err);
+                // Don't block the UI for this, just show 0
+                setStats({ playerCount: 0, guildCount: 0 });
+            }
 
-                const [statsRes, bonusTypesRes, itemIdsRes] = await Promise.all([
-                    fetchWithAuth(`${API_BASE_URL}/admin/stats`),
+            // Fetch core metadata (more critical)
+            try {
+                const [bonusTypesRes, itemIdsRes] = await Promise.all([
                     fetchWithAuth(`${API_BASE_URL}/admin/metadata/bonus-types`),
                     fetchWithAuth(`${API_BASE_URL}/admin/metadata/item-ids`),
                 ]);
 
-                const checkResponse = async (res: Response, name: string) => {
-                    if (!res.ok) {
-                        let errorBody = `API call failed with status ${res.status}`;
-                        try {
-                            const errJson = await res.json();
-                            errorBody = errJson.message || JSON.stringify(errJson);
-                        } catch (e) {
-                            try {
-                                errorBody = await res.text();
-                            } catch (readErr) {
-                                // Ignore
-                            }
-                        }
-                        throw new Error(`Failed to fetch ${name}: ${errorBody}`);
-                    }
-                    return res.json();
-                };
+                if (!bonusTypesRes.ok || !itemIdsRes.ok) {
+                    throw new Error('Failed to fetch core metadata for forms.');
+                }
 
-                const [statsData, bonusTypesData, itemIdsData] = await Promise.all([
-                    checkResponse(statsRes, 'stats'),
-                    checkResponse(bonusTypesRes, 'bonus types'),
-                    checkResponse(itemIdsRes, 'item IDs'),
-                ]);
-
-                setStats(statsData);
-
+                const bonusTypesData = await bonusTypesRes.json();
+                const itemIdsData = await itemIdsRes.json();
+                
                 setMetadata({
                     bonusTypes: bonusTypesData.bonusTypes.map((t: string) => ({ value: t, label: t })),
                     equipmentSlots: bonusTypesData.equipmentSlots.map((s: string) => ({ value: s, label: s })),
@@ -68,9 +60,10 @@ const AdminDashboard: FC<AdminDashboardProps> = ({ token, onLogout }) => {
                         equipment: itemIdsData.equipment.map((i: { id: string, name: string }) => ({ value: i.id, label: `${i.name} (${i.id})` })),
                     }
                 });
+
             } catch (err) {
-                console.error("Could not fetch metadata", err);
-                alert("Không thể tải dữ liệu meta cho admin panel.\n\nChi tiết: " + (err as Error).message);
+                 console.error("Could not fetch critical metadata", err);
+                 alert("Lỗi nghiêm trọng: Không thể tải dữ liệu cần thiết cho các form.\n\nChi tiết: " + (err as Error).message);
             } finally {
                 setIsMetadataLoading(false);
             }
@@ -101,6 +94,8 @@ const AdminDashboard: FC<AdminDashboardProps> = ({ token, onLogout }) => {
         { type: 'divider', label: 'Dữ Liệu Game' },
         { key: 'guild_wars', label: 'Tạo T.M.C' },
         { key: 'realms', label: 'Cảnh Giới' },
+        { key: 'trial_zones', label: 'Thí Luyện' },
+        { key: 'exploration_locations', label: 'Thám Hiểm' },
         { key: 'techniques', label: 'Công Pháp' },
         { key: 'equipment', label: 'Trang Bị' },
         { key: 'pvp_skills', label: 'Tuyệt Kỹ PvP' },
@@ -146,6 +141,8 @@ const AdminDashboard: FC<AdminDashboardProps> = ({ token, onLogout }) => {
             case 'events': return <DataManager token={token} tableName="events" title="Quản Lý Sự Kiện" primaryKey="id" displayColumns={[{ key: 'id', label: 'ID' }, { key: 'title', label: 'Tiêu Đề' }, { key: 'bonus_type', label: 'Loại Bonus' }]} formFields={[{ name: 'id', label: 'ID', isKey: true }, { name: 'title', label: 'Tiêu Đề' }, { name: 'description', label: 'Mô Tả' }, { name: 'bonus_type', label: 'Loại Bonus' }, { name: 'bonus_value', label: 'Giá Trị Bonus', type: 'number' }, { name: 'starts_at', label: 'Bắt Đầu', type: 'datetime-local' }, { name: 'expires_at', label: 'Kết Thúc', type: 'datetime-local' }, { name: 'is_active', label: 'Kích Hoạt', type: 'boolean' }]} />;
             case 'gift_codes': return <DataManager token={token} tableName="gift_codes" title="Quản Lý Giftcode" primaryKey="code" displayColumns={[{ key: 'code', label: 'Mã' }, { key: 'uses', label: 'Lượt Dùng' }, { key: 'max_uses', label: 'Tối Đa' }]} formFields={[{ name: 'code', label: 'Mã', isKey: true, required: true }, { name: 'rewards', label: 'Phần Thưởng', type: 'list', columns: rewardsColumns }, { name: 'max_uses', label: 'Số Lượt Tối Đa', type: 'number' }, { name: 'expires_at', label: 'Hết Hạn', type: 'datetime-local' }]} />;
             case 'realms': return <DataManager token={token} tableName="realms" title="Quản Lý Cảnh Giới" primaryKey="realmIndex" displayColumns={[{ key: 'realmIndex', label: 'Index' }, { key: 'name', label: 'Tên' }]} formFields={[{ name: 'realmIndex', label: 'Index', type: 'number', isKey: true, required: true }, { name: 'name', label: 'Tên' }, { name: 'qiThreshold', label: 'Linh Khí Cần', type: 'number' }, { name: 'baseQiPerSecond', label: 'Linh Khí/s', type: 'number' }, { name: 'breakthroughChance', label: 'Tỉ Lệ Đột Phá', type: 'number' }, { name: 'baseHp', label: 'HP Gốc', type: 'number' }, { name: 'baseAtk', label: 'ATK Gốc', type: 'number' }, { name: 'baseDef', label: 'DEF Gốc', type: 'number' }, { name: 'baseSpeed', label: 'Tốc Độ Gốc', type: 'number' }, { name: 'baseCritRate', label: 'Tỷ Lệ Bạo Kích Gốc', type: 'number' }, { name: 'baseCritDamage', label: 'ST Bạo Kích Gốc', type: 'number' }, { name: 'baseDodgeRate', label: 'Tỷ Lệ Né Gốc', type: 'number' }]} />;
+            case 'trial_zones': return <DataManager token={token} tableName="trial_zones" title="Quản Lý Thí Luyện" displayColumns={[{ key: 'id', label: 'ID' }, { key: 'name', label: 'Tên' }, { key: 'requiredRealmIndex', label: 'Y/C C.Giới' }]} formFields={[{ name: 'id', label: 'ID', isKey: true, required: true }, { name: 'name', label: 'Tên' }, { name: 'description', label: 'Mô Tả' }, { name: 'requiredRealmIndex', label: 'Y/C C.Giới (Index)', type: 'number' }, { name: 'cooldownSeconds', label: 'Hồi Chiêu (giây)', type: 'number' }, { name: 'monster', label: 'Quái Vật (JSON)', type: 'json' }, { name: 'rewards', label: 'Phần Thưởng', type: 'list', columns: rewardsColumns }]} />;
+            case 'exploration_locations': return <DataManager token={token} tableName="exploration_locations" title="Quản Lý Thám Hiểm" displayColumns={[{ key: 'id', label: 'ID' }, { key: 'name', label: 'Tên' }, { key: 'requiredRealmIndex', label: 'Y/C C.Giới' }]} formFields={[{ name: 'id', label: 'ID', isKey: true, required: true }, { name: 'name', label: 'Tên' }, { name: 'description', label: 'Mô Tả' }, { name: 'requiredRealmIndex', label: 'Y/C C.Giới (Index)', type: 'number' }, { name: 'requiredBodyStrength', label: 'Y/C Luyện Thể', type: 'number' }, { name: 'durationSeconds', label: 'Thời Gian (giây)', type: 'number' }, { name: 'rewards', label: 'Phần Thưởng', type: 'list', columns: rewardsColumns }]} />;
             case 'techniques': return <DataManager token={token} tableName="techniques" title="Quản Lý Công Pháp" displayColumns={[{ key: 'id', label: 'ID' }, { key: 'name', label: 'Tên' }]} formFields={[{ name: 'id', label: 'ID', isKey: true, required: true }, { name: 'name', label: 'Tên' }, { name: 'description', label: 'Mô Tả' }, { name: 'requiredRealmIndex', label: 'Cảnh Giới Yêu Cầu', type: 'number' }, { name: 'bonuses', label: 'Bonuses', type: 'list', columns: [{ name: 'type', label: 'Loại', inputType: 'select', options: metadata.bonusTypes }, { name: 'value', label: 'Giá trị', type: 'number' }] }]} />;
             case 'equipment': return <DataManager token={token} tableName="equipment" title="Quản Lý Trang Bị" displayColumns={[{ key: 'id', label: 'ID' }, { key: 'name', label: 'Tên' }, { key: 'slot', label: 'Loại' }]} formFields={[{ name: 'id', label: 'ID', isKey: true, required: true }, { name: 'name', label: 'Tên' }, { name: 'description', label: 'Mô Tả' }, { name: 'slot', label: 'Loại', inputType: 'select', options: metadata.equipmentSlots }, { name: 'bonuses', label: 'Bonuses', type: 'list', columns: [{ name: 'type', label: 'Loại', inputType: 'select', options: metadata.bonusTypes }, { name: 'value', label: 'Giá trị', type: 'number' }] }]} />;
             case 'pvp_skills': return <DataManager token={token} tableName="pvp_skills" title="Quản Lý Tuyệt Kỹ PvP" displayColumns={[{ key: 'id', label: 'ID' }, { key: 'name', label: 'Tên' }]} formFields={[{ name: 'id', label: 'ID', isKey: true, required: true }, { name: 'name', label: 'Tên' }, { name: 'description', label: 'Mô Tả' }, { name: 'cost', label: 'Giá (Điểm Vinh Dự)', type: 'number' }, { name: 'energy_cost', label: 'Sát Khí Tốn', type: 'number' }, { name: 'effect', label: 'Hiệu Ứng (JSON)', type: 'json' }]} />;
