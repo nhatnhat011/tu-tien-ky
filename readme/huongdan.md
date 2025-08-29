@@ -1,7 +1,7 @@
-# Hướng Dẫn Cài Đặt và Chạy Game "Tu Tiên Ký: Hư Vô Lộ"
+# Hướng Dẫn Cài Đặt và Chạy Game "Tu Tiên Ký: Hư Vô Lộ" (Phiên bản SQLite)
 
 Tài liệu này cung cấp hai bộ hướng dẫn:
-1.  **Triển khai lên máy chủ VPS Ubuntu (Production):** Dành cho việc đưa game lên môi trường online, sử dụng Nginx, PM2, và các công cụ chuyên nghiệp.
+1.  **Triển khai lên máy chủ VPS Ubuntu (Production):** Dành cho việc đưa game lên môi trường online, sử dụng Nginx, PM2, và SQLite.
 2.  **Chạy trên máy local (Development):** Dành cho việc phát triển và thử nghiệm trên máy tính cá nhân.
 
 ---
@@ -27,9 +27,9 @@ Phần này hướng dẫn bạn cách triển khai toàn bộ ứng dụng (Bac
         ```bash
         sudo apt install nginx -y
         ```
-    *   **MariaDB (Database):**
+    *   **SQLite3 (Database):**
         ```bash
-        sudo apt install mariadb-server -y
+        sudo apt install sqlite3 -y
         ```
     *   **Node.js (thông qua nvm):**
         ```bash
@@ -44,39 +44,12 @@ Phần này hướng dẫn bạn cách triển khai toàn bộ ứng dụng (Bac
         ```bash
         npm install pm2 -g
         ```
+    *   **Build Tools (cần cho `sqlite3` package):**
+        ```bash
+        sudo apt install build-essential python3 -y
+        ```
 
-### Bước 2: Cấu Hình Database
-
-1.  **Bảo mật MariaDB:** Chạy script bảo mật và làm theo các hướng dẫn (đặt mật khẩu root, xóa user ẩn danh, etc.).
-    ```bash
-    sudo mysql_secure_installation
-    ```
-
-2.  **Tạo Database và User:**
-    ```bash
-    sudo mysql -u root -p
-    ```
-    Bên trong MariaDB shell, chạy các lệnh sau (thay `your_password` bằng một mật khẩu mạnh):
-    ```sql
-    CREATE DATABASE tu_tien_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-    CREATE USER 'tu_tien_user'@'localhost' IDENTIFIED BY 'your_password';
-    GRANT ALL PRIVILEGES ON tu_tien_db.* TO 'tu_tien_user'@'localhost';
-    FLUSH PRIVILEGES;
-    EXIT;
-    ```
-
-3.  **Nhập Schema:** Tải mã nguồn của bạn lên server, sau đó chạy lệnh sau để nhập dữ liệu.
-    ```bash
-    # Ví dụ: Giả sử mã nguồn của bạn ở /var/www/tu-tien-ky
-    sudo mysql -u tu_tien_user -p tu_tien_db < /var/www/tu-tien-ky/sql.md
-    ```
-
-4.  **Tạo tài khoản Admin đầu tiên:** Để đăng nhập vào trang quản trị, hãy chạy lệnh SQL sau. Lệnh này tạo tài khoản `admin` với mật khẩu là `123456`.
-    ```bash
-    sudo mysql -u root -p tu_tien_db -e "INSERT INTO admins (username, password) VALUES ('admin', '$2a$10$toE5KdTvU0p9BJpLzqhSbu8cK/srrZQkldLNXRD5X6cDbmct3x0BK');"
-    ```
-
-### Bước 3: Tải và Cài Đặt Dependencies
+### Bước 2: Tải và Cài Đặt Dependencies
 
 1.  **Tải mã nguồn:** Di chuyển đến thư mục bạn muốn chứa dự án (ví dụ `/var/www/`) và clone repository (hoặc tải lên qua FTP/SCP).
     ```bash
@@ -105,25 +78,22 @@ Phần này hướng dẫn bạn cách triển khai toàn bộ ứng dụng (Bac
         npm install
         ```
 
-### Bước 4: Cấu Hình Ứng Dụng Backend (Quan trọng)
+### Bước 3: Khởi Tạo Database
 
-Đây là bước cực kỳ quan trọng để đảm bảo ứng dụng kết nối đúng database và bảo mật. Các file cần chỉnh sửa đều nằm trong thư mục `server/`.
-
-1.  **Cấu hình kết nối Database:**
-    *   Mở file: `server/config/database.js`
-    *   Chỉnh sửa các giá trị `user` và `password` để khớp với thông tin bạn đã tạo ở **Bước 2**.
-    ```javascript
-    const pool = mariadb.createPool({
-        host: 'localhost', 
-        port: 3306,
-        user: 'tu_tien_user', // <-- THAY ĐỔI
-        password: 'your_password', // <-- THAY ĐỔI
-        database: 'tu_tien_db',
-        // ... các cấu hình khác
-    });
+1.  **Nhập Schema:** Di chuyển vào thư mục gốc của dự án. Lệnh sau sẽ tạo file database `tu_tien.sqlite` trong thư mục `server/` và khởi tạo tất cả các bảng.
+    ```bash
+    # Từ thư mục gốc /var/www/tu-tien-ky
+    sqlite3 server/tu_tien.sqlite < sql.md
     ```
 
-2.  **Cấu hình Bảo mật (JWT Secret):**
+2.  **Tạo tài khoản Admin đầu tiên:** Để đăng nhập vào trang quản trị, hãy chạy lệnh sau. Lệnh này tạo tài khoản `admin` với mật khẩu là `123456`.
+    ```bash
+    sqlite3 server/tu_tien.sqlite "INSERT INTO admins (username, password) VALUES ('admin', '$2a$10$toE5KdTvU0p9BJpLzqhSbu8cK/srrZQkldLNXRD5X6cDbmct3x0BK');"
+    ```
+
+### Bước 4: Cấu Hình Ứng Dụng Backend (Quan trọng)
+
+1.  **Cấu hình Bảo mật (JWT Secret):**
     *   Mở file: `server/middleware/auth.js`
     *   **CẢNH BÁO:** Bắt buộc phải thay đổi `JWT_SECRET`. Sử dụng một chuỗi ký tự ngẫu nhiên và phức tạp.
     *   Bạn có thể tạo một key mạnh bằng lệnh sau trên terminal của VPS: `openssl rand -base64 32`
@@ -132,6 +102,8 @@ Phần này hướng dẫn bạn cách triển khai toàn bộ ứng dụng (Bac
     // Ví dụ sau khi thay đổi:
     const JWT_SECRET = 'dGhpcyBpcyBhIHZlcnkgc3Ryb25nIGFuZCBzZWNyZXQga2V5Cg=='; // <-- THAY ĐỔI
     ```
+2.  **Cấu hình Database:**
+    *   File `server/config/database.js` đã được cấu hình để tự động sử dụng file `tu_tien.sqlite`. Không cần chỉnh sửa thêm.
 
 ### Bước 5: Build Giao Diện
 
@@ -189,16 +161,9 @@ Phần này hướng dẫn bạn cách triển khai toàn bộ ứng dụng (Bac
 
 3.  **Kích hoạt cấu hình và kiểm tra lỗi:**
     ```bash
-    # Tạo symbolic link để kích hoạt site
     sudo ln -s /etc/nginx/sites-available/tu-tien-ky /etc/nginx/sites-enabled/
-    
-    # Xóa link default nếu có
     sudo rm /etc/nginx/sites-enabled/default
-    
-    # Kiểm tra cú pháp Nginx
     sudo nginx -t
-    
-    # Khởi động lại Nginx
     sudo systemctl restart nginx
     ```
 
@@ -241,19 +206,28 @@ Làm theo các hướng dẫn để nhận chứng chỉ và tự động cấu 
 
 ## II. Hướng Dẫn Chạy trên Môi Trường Development (Local)
 
-Phần này dành cho việc phát triển và thử nghiệm trên máy tính cá nhân. Bạn sẽ cần **mở 3 cửa sổ Terminal (hoặc Command Prompt/PowerShell) riêng biệt** và giữ chúng chạy đồng thời.
+Phần này dành cho việc phát triển và thử nghiệm trên máy tính cá nhân.
 
 ### Yêu Cầu
 1.  **Node.js**: Phiên bản 18.x trở lên.
-2.  **MariaDB (hoặc MySQL)**: Một instance database đang chạy.
-3.  **npm** (hoặc yarn, pnpm).
+2.  **npm** (hoặc yarn, pnpm).
+3.  **SQLite3 Command-Line Tool** (để dễ dàng quản lý DB, không bắt buộc nhưng khuyến khích).
 
 ### Bước 1: Chuẩn Bị Database
-*   **Tạo Database:** Tạo một database rỗng với tên `tu_tien_db` và collation `utf8mb4_unicode_ci`.
-*   **Nhập Dữ Liệu:** Sử dụng một công cụ quản lý DB (như DBeaver, DataGrip, hoặc command line) để chạy toàn bộ nội dung của file `sql.md` trên database vừa tạo. Thao tác này sẽ tạo tất cả các bảng và dữ liệu game ban đầu.
-*   **Tạo Tài Khoản Admin:** Để đăng nhập vào trang quản trị, hãy chạy lệnh SQL sau. Lệnh này tạo tài khoản `admin` với mật khẩu là `123456`.
-    ```sql
-    INSERT INTO admins (username, password) VALUES ('admin', '$2a$10$toE5KdTvU0p9BJpLzqhSbu8cK/srrZQkldLNXRD5X6cDbmct3x0BK');
+1.  **Xóa file database cũ (nếu có):**
+    ```bash
+    # Trong thư mục server/
+    rm tu_tien.sqlite
+    ```
+2.  **Khởi tạo Database:**
+    *   Mở Terminal/Command Prompt tại **thư mục gốc của dự án**.
+    *   Chạy lệnh sau để tạo và khởi tạo database:
+    ```bash
+    sqlite3 server/tu_tien.sqlite < sql.md
+    ```
+3.  **Tạo Tài Khoản Admin:** Chạy lệnh sau để tạo tài khoản `admin` với mật khẩu là `123456`.
+    ```bash
+    sqlite3 server/tu_tien.sqlite "INSERT OR IGNORE INTO admins (username, password) VALUES ('admin', '$2a$10$toE5KdTvU0p9BJpLzqhSbu8cK/srrZQkldLNXRD5X6cDbmct3x0BK');"
     ```
 
 ### Bước 2: Chạy các thành phần của dự án
@@ -263,54 +237,27 @@ Mở 3 cửa sổ Terminal khác nhau.
 ---
 **Terminal 1: Backend Server**
 
-1.  **Di chuyển vào thư mục `server`:**
-    ```bash
-    cd server
-    ```
-2.  **Cài đặt dependencies:**
-    ```bash
-    npm install
-    ```
-3.  **Cấu hình kết nối Database:**
-    *   Mở file `server/config/database.js`.
-    *   Chỉnh sửa các thông tin `user`, `password`, `database`, `host` cho phù hợp với môi trường local của bạn.
-4.  **Khởi động Server:**
-    ```bash
-    npm start
-    ```
+1.  **Di chuyển vào thư mục `server`:** `cd server`
+2.  **Cài đặt dependencies:** `npm install`
+3.  **Khởi động Server:** `npm start`
     *   Server sẽ chạy tại `http://localhost:3001`.
     *   **Giữ cửa sổ terminal này mở.**
 
 ---
 **Terminal 2: Game Client**
 
-1.  **Di chuyển về thư mục gốc của dự án.** (Nếu bạn đang ở trong `server`, dùng `cd ..`)
-2.  **Cài đặt dependencies:**
-    ```bash
-    npm install
-    ```
-3.  **Khởi động server phát triển:**
-    ```bash
-    npm run dev
-    ```
+1.  **Di chuyển về thư mục gốc của dự án.**
+2.  **Cài đặt dependencies:** `npm install`
+3.  **Khởi động server phát triển:** `npm run dev`
     *   Game client sẽ có thể truy cập tại `http://localhost:3000`.
     *   **Giữ cửa sổ terminal này mở.**
 
 ---
 **Terminal 3: Trang Quản Trị (Admin Panel)**
 
-1.  **Di chuyển vào thư mục `admin`:** (Từ thư mục gốc, chạy `cd admin`)
-    ```bash
-    cd admin
-    ```
-2.  **Cài đặt dependencies:**
-    ```bash
-    npm install
-    ```
-3.  **Khởi động server phát triển:**
-    ```bash
-    npm run dev
-    ```
+1.  **Di chuyển vào thư mục `admin`:** `cd admin`
+2.  **Cài đặt dependencies:** `npm install`
+3.  **Khởi động server phát triển:** `npm run dev`
     *   Admin panel sẽ có thể truy cập tại `http://localhost:3002`.
     *   **Giữ cửa sổ terminal này mở.**
 

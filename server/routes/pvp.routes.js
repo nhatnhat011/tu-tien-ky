@@ -19,7 +19,7 @@ router.get('/opponents', authenticateToken, async (req, res) => {
         }
 
         const opponents = await conn.query(
-            "SELECT name, realmIndex FROM players WHERE realmIndex BETWEEN ? AND ? AND name != ? ORDER BY RAND() LIMIT 5",
+            "SELECT name, realmIndex FROM players WHERE realmIndex BETWEEN ? AND ? AND name != ? ORDER BY RANDOM() LIMIT 5",
             [Math.max(0, player.realmIndex - 1), player.realmIndex + 1, playerName]
         );
         res.status(200).json(opponents);
@@ -40,18 +40,18 @@ router.get('/history', authenticateToken, async (req, res) => {
         const history = await conn.query(
             `SELECT 
                 id, 
-                IF(attacker_name = ?, defender_name, attacker_name) as opponent,
+                CASE WHEN attacker_name = ? THEN defender_name ELSE attacker_name END as opponent,
                 (winner_name = ?) as won,
                 funny_summary as summary,
                 combat_log as log,
-                UNIX_TIMESTAMP(timestamp) as timestamp
+                strftime('%s', timestamp) as timestamp
             FROM pvp_history 
             WHERE attacker_name = ? OR defender_name = ? 
             ORDER BY timestamp DESC 
             LIMIT 20`,
             [playerName, playerName, playerName, playerName]
         );
-        res.status(200).json(history.map(h => ({ ...h, log: h.log || [], timestamp: h.timestamp * 1000 })));
+        res.status(200).json(history.map(h => ({ ...h, log: (typeof h.log === 'string' ? JSON.parse(h.log) : (h.log || [])), timestamp: h.timestamp * 1000 })));
     } catch (err) {
         console.error("Get History Error:", err);
         res.status(500).json({ message: 'Lỗi máy chủ khi tải lịch sử đấu.' });

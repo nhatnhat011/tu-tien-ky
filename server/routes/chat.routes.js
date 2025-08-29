@@ -14,12 +14,12 @@ router.get('/messages', authenticateToken, async (req, res) => {
         let messages;
         if (sinceId > 0) {
             messages = await conn.query(
-                "SELECT id, playerName, message, UNIX_TIMESTAMP(timestamp) as timestamp FROM chat_messages WHERE id > ? ORDER BY timestamp ASC",
+                "SELECT id, playerName, message, strftime('%s', timestamp) as timestamp FROM chat_messages WHERE id > ? ORDER BY timestamp ASC",
                 [sinceId]
             );
         } else {
              messages = await conn.query(
-                `SELECT id, playerName, message, UNIX_TIMESTAMP(timestamp) as timestamp FROM (
+                `SELECT id, playerName, message, strftime('%s', timestamp) as timestamp FROM (
                     SELECT * FROM chat_messages ORDER BY id DESC LIMIT ?
                 ) as last_messages ORDER BY timestamp ASC`,
                 [MAX_CHAT_MESSAGES]

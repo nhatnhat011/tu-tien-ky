@@ -3,6 +3,34 @@ const { getGameData } = require('../services/gameData.service');
 
 // --- Helper Functions ---
 
+/**
+ * NEW: A helper function to parse all TEXT fields that should be JSON.
+ * This is crucial for the SQLite migration.
+ * @param {object} playerRow The raw row object from the SQLite database.
+ * @returns {object} A player object with all necessary fields parsed into objects/arrays.
+ */
+const parsePlayerFromDBRow = (playerRow) => {
+    if (!playerRow) return null;
+    const p = { ...playerRow };
+
+    try {
+        p.pills = typeof p.pills === 'string' ? JSON.parse(p.pills) : (p.pills || {});
+        p.herbs = typeof p.herbs === 'string' ? JSON.parse(p.herbs) : (p.herbs || {});
+        p.lastChallengeTime = typeof p.lastChallengeTime === 'string' ? JSON.parse(p.lastChallengeTime) : (p.lastChallengeTime || {});
+        p.learnedTechniques = typeof p.learnedTechniques === 'string' ? JSON.parse(p.learnedTechniques) : (p.learnedTechniques || []);
+        p.unlockedInsights = typeof p.unlockedInsights === 'string' ? JSON.parse(p.unlockedInsights) : (p.unlockedInsights || []);
+        p.purchasedHonorItems = typeof p.purchasedHonorItems === 'string' ? JSON.parse(p.purchasedHonorItems) : (p.purchasedHonorItems || []);
+        p.explorationStatus = typeof p.explorationStatus === 'string' ? JSON.parse(p.explorationStatus) : (p.explorationStatus || null);
+        p.pvpBuff = typeof p.pvpBuff === 'string' ? JSON.parse(p.pvpBuff) : (p.pvpBuff || null);
+        p.learned_pvp_skills = typeof p.learned_pvp_skills === 'string' ? JSON.parse(p.learned_pvp_skills) : (p.learned_pvp_skills || []);
+    } catch (e) {
+        console.error(`Failed to parse JSON for player ${p.name}:`, e);
+    }
+
+    return p;
+};
+
+
 const calculateTotalBonuses = async (conn, player) => {
     const gameData = getGameData();
     const bonuses = { 
@@ -96,7 +124,7 @@ const calculateTotalBonuses = async (conn, player) => {
     }
     
     if (conn) {
-      const activeEvents = await conn.query("SELECT bonus_type, bonus_value FROM events WHERE is_active = TRUE AND starts_at <= NOW() AND expires_at >= NOW()");
+      const activeEvents = await conn.query("SELECT bonus_type, bonus_value FROM events WHERE is_active = 1 AND starts_at <= datetime('now') AND expires_at >= datetime('now')");
       activeEvents.forEach(event => {
           if (event.bonus_type === 'qi_multiplier') {
               bonuses.qiMultiplier *= event.bonus_value;
@@ -156,35 +184,32 @@ const updatePlayerState = async (conn, name, updates) => {
     const values = Object.values(updates);
     if (fields.length === 0) return;
 
+    // Stringify any object/array values before updating
+    const processedValues = values.map(val => {
+        if (typeof val === 'object' && val !== null) {
+            return JSON.stringify(val);
+        }
+        return val;
+    });
+
     const setClause = fields.map(field => `\`${field}\` = ?`).join(', ');
     const query = `UPDATE players SET ${setClause} WHERE name = ?`;
-    await conn.query(query, [...values, name]);
+    await conn.query(query, [...processedValues, name]);
 };
 
-// A reusable query to get all relevant player data in one go
-const getPlayerQuery = `
-    SELECT 
-        p.*
-    FROM players p 
-    WHERE p.name = ?
-`;
 
 const getFullPlayerQuery = async (conn, name) => {
     // 1. Get base player data
-    const [playerData] = await conn.query(`
+    const [playerRow] = await conn.query(`
         SELECT 
-            p.name, p.qi, p.realmIndex, p.bodyStrength, p.karma,
-            p.honorPoints, p.linh_thach, p.enlightenmentPoints, p.unlockedInsights,
-            p.learnedTechniques, p.activeTechniqueId, p.pills, p.herbs,
-            p.guildId, p.purchasedHonorItems, p.pvpBuff, p.learned_pvp_skills,
-            p.spiritualRoot, p.explorationStatus, p.lastChallengeTime,
+            p.*,
             g.name as guildName, g.level as guildLevel, g.exp as guildExp
         FROM players p 
         LEFT JOIN guilds g ON p.guildId = g.id 
         WHERE p.name = ?
     `, [name]);
     
-    if (!playerData) return null;
+    if (!playerRow) return null;
 
     // 2. Get all owned equipment instances THAT ARE NOT on the market
     const ownedEquipment = await conn.query(`
@@ -203,29 +228,15 @@ const getFullPlayerQuery = async (conn, name) => {
     `, [name]);
 
     // 3. Process and combine data
-    const gameData = getGameData();
-    const finalPlayer = {
-        ...playerData,
-        // Parse JSON fields safely
-        learnedTechniques: playerData.learnedTechniques || [],
-        pills: playerData.pills || {},
-        herbs: playerData.herbs || {},
-        unlockedInsights: playerData.unlockedInsights || [],
-        purchasedHonorItems: playerData.purchasedHonorItems || [],
-        learned_pvp_skills: playerData.learned_pvp_skills || [],
-        pvpBuff: playerData.pvpBuff || null,
-        lastChallengeTime: playerData.lastChallengeTime || {},
-        explorationStatus: playerData.explorationStatus || null,
-        // Separate equipment into inventory and equipped arrays
-        inventory: [],
-        equipment: [],
-    };
+    const finalPlayer = parsePlayerFromDBRow(playerRow);
+    finalPlayer.inventory = [];
+    finalPlayer.equipment = [];
 
     ownedEquipment.forEach(item => {
         // Combine static data from `equipment` table with instance data
         const itemInstance = {
             ...item,
-            bonuses: item.bonuses || [], // Ensure bonuses is an array
+            bonuses: typeof item.bonuses === 'string' ? JSON.parse(item.bonuses) : (item.bonuses || []), // Ensure bonuses is an array
         };
         if (item.is_equipped) {
             finalPlayer.equipment.push(itemInstance);
@@ -240,30 +251,22 @@ const getFullPlayerQuery = async (conn, name) => {
 
 const processOfflineGains = async (conn, name) => {
     const gameData = getGameData();
-    const rows = await conn.query("SELECT *, UNIX_TIMESTAMP(updated_at) as last_update FROM players WHERE name = ? FOR UPDATE", [name]);
-    if (rows.length === 0) throw new Error('Không tìm thấy đạo hữu này.');
+    const [p_raw] = await conn.query("SELECT *, strftime('%s', updated_at) as last_update FROM players WHERE name = ?", [name]);
+    if (!p_raw) throw new Error('Không tìm thấy đạo hữu này.');
 
-    const p = rows[0];
+    const p = parsePlayerFromDBRow(p_raw);
     const now = Date.now();
-    const lastUpdate = p.updated_at.getTime();
+    const lastUpdate = p.last_update * 1000; // Convert seconds to milliseconds
     const deltaTime = Math.max(0, (now - lastUpdate) / 1000);
     const offlineGains = { qi: 0 };
     let explorationLog;
 
-    // Parse JSON fields safely
-    p.herbs = p.herbs || {};
-    p.explorationStatus = p.explorationStatus || null;
-    p.unlockedInsights = p.unlockedInsights || [];
-    p.purchasedHonorItems = p.purchasedHonorItems || [];
-    p.pvpBuff = p.pvpBuff || null;
-    
     // Complete offline exploration
     if (p.explorationStatus && p.explorationStatus.endTime <= now) {
         const location = gameData.EXPLORATION_LOCATIONS.find(l => l.id === p.explorationStatus.locationId);
         if (location) {
             let rewardsLog = [];
             const root = gameData.SPIRITUAL_ROOTS.find(r => r.id === p.spiritualRoot);
-            // Mộc Linh Căn bonus for exploration yield
             const yieldMultiplier = (root && root.bonus.type === 'alchemy_success_add') ? 1.1 : 1; 
 
             for (const reward of location.rewards) {
@@ -276,7 +279,6 @@ const processOfflineGains = async (conn, name) => {
                     const herb = gameData.HERBS.find(h => h.id === reward.herbId);
                     rewardsLog.push(`${herb?.name} x${amountGained}`);
                 }
-                // NEW: Handle equipment rewards
                 if (reward.type === 'equipment') {
                     await conn.query(
                         "INSERT INTO player_equipment (player_name, equipment_id) VALUES (?, ?)",
@@ -294,11 +296,7 @@ const processOfflineGains = async (conn, name) => {
     // Calculate offline cultivation only if not exploring
     if (p.explorationStatus === null && deltaTime > 1) { // Only calc for more than 1s offline
         const currentRealm = gameData.REALMS[p.realmIndex];
-        // Need to fetch guild info for accurate bonus calculation
-        const guildRows = p.guildId ? await conn.query("SELECT level FROM guilds WHERE id = ?", [p.guildId]) : [];
-        const playerWithGuild = { ...p, guildLevel: guildRows[0]?.level };
         const playerWithEquipment = await getFullPlayerQuery(conn, name);
-
 
         const bonuses = await calculateTotalBonuses(conn, playerWithEquipment);
         const qiPerSecond = (currentRealm.baseQiPerSecond * bonuses.qiMultiplier * (1 + bonuses.qiBonus)) + bonuses.qiPerSecondAdd;
@@ -315,9 +313,9 @@ const processOfflineGains = async (conn, name) => {
     // Persist changes
     await updatePlayerState(conn, name, {
         qi: p.qi,
-        explorationStatus: p.explorationStatus ? JSON.stringify(p.explorationStatus) : null,
-        herbs: JSON.stringify(p.herbs),
-        updated_at: new Date(now) // Explicitly set update time
+        explorationStatus: p.explorationStatus, // Already parsed/nulled
+        herbs: p.herbs, // Already an object
+        updated_at: new Date(now).toISOString().slice(0, 19).replace('T', ' '), // Explicitly set update time for SQLite
     });
 
     const finalPlayerData = await getFullPlayerQuery(conn, name);
@@ -382,7 +380,6 @@ module.exports = {
     calculateTotalBonuses,
     calculateCombatStats,
     updatePlayerState,
-    getPlayerQuery,
     getFullPlayerQuery,
     processOfflineGains,
     performAction,
