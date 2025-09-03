@@ -3,7 +3,7 @@ server {
     # server_name your_domain.com; # THAY ĐỔI TÊN MIỀN
 
     # Phục vụ Game Client (build từ thư mục gốc)
-    root /var/www/tu-tien-ky/dist;
+    root /var/www/ttk/dist;
     index index.html;
 
     location / {
@@ -12,7 +12,7 @@ server {
 
     # Phục vụ Admin Panel
     location /admin {
-        alias /var/www/tu-tien-ky/admin/dist;
+        alias /var/www/ttk/admin/dist;
         try_files $uri /admin/index.html;
     }
 
