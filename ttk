@@ -1,0 +1,28 @@
+server {
+    listen 80;
+    # server_name your_domain.com; # THAY ĐỔI TÊN MIỀN
+
+    # Phục vụ Game Client (build từ thư mục gốc)
+    root /var/www/tu-tien-ky/dist;
+    index index.html;
+
+    location / {
+        try_files $uri /index.html;
+    }
+
+    # Phục vụ Admin Panel
+    location /admin {
+        alias /var/www/tu-tien-ky/admin/dist;
+        try_files $uri /admin/index.html;
+    }
+
+    # API backend
+    location /api/ {
+        proxy_pass http://127.0.0.1:3001; # Backend Node.js chạy ở port 3001
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
