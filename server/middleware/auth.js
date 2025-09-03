@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const pool = require('../config/database');
-const JWT_SECRET = 'your_super_secret_key_for_tu_tien_game'; // CHANGE THIS!
+const JWT_SECRET = $ENV_SECRET; // CHANGE THIS!
 
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
